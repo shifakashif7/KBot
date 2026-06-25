@@ -1,0 +1,13 @@
+flask
+flask-cors
+flask-limiter
+python-dotenv
+gunicorn
+llama-index
+llama-index-embeddings-openai
+llama-index-llms-openai
+openai
+pydantic
+beautifulsoup4
+requests
+docx2txt

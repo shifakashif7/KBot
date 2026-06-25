@@ -1,0 +1,14 @@
+.env
+.env*
+venv/
+menv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vercel
+output.txt
+input.txt
+KBot Storage/
+kbot_storage.tar.gz
+kBot.ipynb
+scrape_website.py
