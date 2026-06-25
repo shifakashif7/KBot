@@ -112,7 +112,11 @@ export default function ChatScreen() {
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
 
-    // Add user message
+    const history = messages.slice(-10).map((m) => ({
+      role: m.sender === "user" ? "user" : "assistant",
+      content: m.text,
+    }));
+
     const userMessage: Message = {
       id: Date.now().toString(),
       text,
@@ -124,31 +128,59 @@ export default function ChatScreen() {
     setInputValue("");
     setIsLoading(true);
 
+    const botId = (Date.now() + 1).toString();
+    setMessages((prev) => [
+      ...prev,
+      { id: botId, text: "", sender: "bot", timestamp: new Date() },
+    ]);
+
     try {
-      const response = await fetch(
-        `/api/response?query=${encodeURIComponent(text)}`
-      );
-      const data = await response.json();
+      const response = await fetch("/api/response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: text, history }),
+      });
 
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: data.response,
-        sender: "bot",
-        timestamp: new Date(),
-      };
+      if (!response.ok) throw new Error("Backend error");
 
-      setMessages((prev) => [...prev, botMessage]);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      setIsLoading(false);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") break;
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.token) {
+                accumulated += parsed.token;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === botId ? { ...m, text: accumulated } : m
+                  )
+                );
+              }
+            } catch {}
+          }
+        }
+      }
     } catch (error) {
       console.error("Error fetching response:", error);
-
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: "Sorry, I couldn't process your request. Please try again later.",
-        sender: "bot",
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === botId
+            ? { ...m, text: "Sorry, I couldn't process your request. Please try again." }
+            : m
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -162,7 +194,7 @@ export default function ChatScreen() {
         <div className="max-w-3xl mx-auto">
           <div className="space-y-6 py-4">
             <AnimatePresence>
-              {messages.map((message, index) => (
+              {messages.map((message) => (
                 <motion.div
                   key={message.id}
                   initial={{ opacity: 0, y: 10 }}
