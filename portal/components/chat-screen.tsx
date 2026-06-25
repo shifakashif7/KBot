@@ -6,6 +6,8 @@ import { Send, Paperclip, Smile } from "lucide-react";
 import Image from "next/image";
 import LoadingDots from "./loading-dots";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Message = {
   id: string;
@@ -129,10 +131,6 @@ export default function ChatScreen() {
     setIsLoading(true);
 
     const botId = (Date.now() + 1).toString();
-    setMessages((prev) => [
-      ...prev,
-      { id: botId, text: "", sender: "bot", timestamp: new Date() },
-    ]);
 
     try {
       const response = await fetch("/api/response", {
@@ -146,8 +144,7 @@ export default function ChatScreen() {
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
-
-      setIsLoading(false);
+      let bubbleAdded = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -162,11 +159,20 @@ export default function ChatScreen() {
               const parsed = JSON.parse(data);
               if (parsed.token) {
                 accumulated += parsed.token;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === botId ? { ...m, text: accumulated } : m
-                  )
-                );
+                if (!bubbleAdded) {
+                  bubbleAdded = true;
+                  setIsLoading(false);
+                  setMessages((prev) => [
+                    ...prev,
+                    { id: botId, text: accumulated, sender: "bot", timestamp: new Date() },
+                  ]);
+                } else {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === botId ? { ...m, text: accumulated } : m
+                    )
+                  );
+                }
               }
             } catch {}
           }
@@ -174,13 +180,16 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error("Error fetching response:", error);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === botId
-            ? { ...m, text: "Sorry, I couldn't process your request. Please try again." }
-            : m
-        )
-      );
+      setIsLoading(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: botId,
+          text: "Sorry, I couldn't process your request. Please try again.",
+          sender: "bot",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -242,7 +251,22 @@ export default function ChatScreen() {
                           : "bg-[#8f0e0e] text-white"
                       }`}
                     >
-                      {message.text}
+                      {message.sender === "bot" ? (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                            li: ({ children }) => <li className="leading-snug">{children}</li>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                          }}
+                        >
+                          {message.text}
+                        </ReactMarkdown>
+                      ) : (
+                        message.text
+                      )}
                     </div>
                   </div>
                 </motion.div>
