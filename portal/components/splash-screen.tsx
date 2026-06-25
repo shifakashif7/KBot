@@ -39,11 +39,11 @@ export default function SplashScreen() {
         className="overflow-hidden rounded-xl shadow-2xl"
       >
         <Image
-          src="/logo-name.png"
+          src="/kcbot.png"
           alt="KBot Logo"
-          width={320}
+          width={120}
           height={120}
-          className="bg-[#8f0e0e] object-contain p-4"
+          className="bg-white object-contain p-4"
         />
       </motion.div>
       <motion.p

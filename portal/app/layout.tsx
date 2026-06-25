@@ -15,9 +15,9 @@ export const metadata: Metadata = {
   description: "AI Chatbot Assistant",
   generator: "v0.dev",
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
+    icon: "/kcbot.png",
+    shortcut: "/kcbot.png",
+    apple: "/kcbot.png",
   },
 };
 

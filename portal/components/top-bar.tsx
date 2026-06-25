@@ -13,8 +13,8 @@ export default function TopBar() {
       className="fixed top-0 left-0 right-0 flex items-center justify-between bg-white shadow-md w-full z-50 h-14 px-4 md:px-8"
     >
       <div className="flex items-center gap-2">
-        <div className="flex items-center justify-center bg-[#8f0e0e] rounded-full w-10 h-10 overflow-hidden">
-          <Image src="/logo.png" alt="KBot Logo" width={30} height={30} className="object-contain" />
+        <div className="flex items-center justify-center bg-white rounded-full w-10 h-10 overflow-hidden border border-gray-100">
+          <Image src="/kcbot.png" alt="KBot Logo" width={30} height={30} className="object-contain" />
         </div>
         <h1 className="text-[#8f0e0e] text-xl font-semibold">
           <Link href="/" className="no-underline hover:text-[#a51212] transition-colors">
