@@ -338,6 +338,9 @@ export default function ChatScreen() {
             <Send size={18} />
           </button>
         </div>
+        <p className="text-center text-[10px] text-gray-400 mt-1">
+          Powered by BSCS&apos;24 alumni Shifa, Maham &amp; Sanabil
+        </p>
       </motion.div>
     </div>
   );
