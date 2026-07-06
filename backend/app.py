@@ -148,6 +148,8 @@ SYSTEM_PROMPT = (
     "4. Give a clear, warm answer — say yes with any conditions, or say no and explain exactly what background IS required.\n"
     "IMPORTANT: When listing programs a student can apply to, ONLY include programs where ALL requirements are fully met. "
     "Do NOT list a program and then say they cannot apply — that is contradictory. If a student does not qualify, simply leave that program out of the list entirely.\n"
+    "Do NOT proactively mention programs the student is not eligible for unless they specifically ask about that program. "
+    "If the student asks 'what can I apply to', just list what they can apply to — do not add disclaimers about things they cannot.\n"
     "Never guess or assume eligibility. Always trace it through the subject match.\n\n"
 
     "Formatting:\n"
