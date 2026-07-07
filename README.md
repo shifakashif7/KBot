@@ -1,51 +1,50 @@
-# KBot — RAG-Powered Intelligent Chatbot
+# KBot — RAG-Powered Chatbot for Kinnaird College
 
-> A Python + Flask chatbot system that uses Retrieval-Augmented Generation (RAG) via LlamaIndex and the OpenAI API to deliver accurate, context-grounded responses from a persistent knowledge base.
+> An AI assistant for Kinnaird College for Women University, Lahore. Built with a Flask backend (Railway) and a Next.js frontend (Vercel), using custom numpy-based vector retrieval and OpenAI for embeddings and response generation.
 
 ---
 
 ## Overview
 
-KBot is a full-stack AI chatbot built with a Flask backend and a Next.js frontend. Rather than relying solely on a language model's parametric knowledge, KBot retrieves relevant context from a pre-indexed knowledge base before generating each response — significantly reducing hallucination and improving factual accuracy on domain-specific queries.
+KBot answers queries from prospective and current students about admissions, fee structure, program eligibility, and general college information. It uses Retrieval-Augmented Generation (RAG) — before generating a response, it retrieves the most relevant chunks from indexed college documents so answers are grounded in real data rather than guesswork.
 
-The RAG pipeline is powered by **LlamaIndex** for document indexing and semantic retrieval, and **OpenAI** for embedding generation and response synthesis. The index is persisted locally and loaded at query time, making the system lightweight and stateless per request.
-
-**Achieved 80% query accuracy** against domain-specific ground-truth test queries.
+The vector index is built from PDF and DOCX documents using `build_index.py`, stored as a compact `vectors.npy` (float16) + `texts.json` file pair, and hosted on GitHub Releases. The Railway container downloads it at startup via `start.sh`.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        KBot System                          │
-│                                                             │
-│  ┌──────────────┐     HTTP POST      ┌───────────────────┐  │
-│  │  Next.js UI  │ ─────────────────▶ │   Flask Backend   │  │
-│  │  (frontend)  │ ◀───────────────── │   app.py          │  │
-│  └──────────────┘     JSON response  └────────┬──────────┘  │
-│                                               │             │
-│                                    ┌──────────▼──────────┐  │
-│                                    │   LlamaIndex        │  │
-│                                    │   StorageContext     │  │
-│                                    │   (KBot Storage/)   │  │
-│                                    └──────────┬──────────┘  │
-│                                               │             │
-│                                    ┌──────────▼──────────┐  │
-│                                    │   OpenAI API        │  │
-│                                    │   (embeddings +     │  │
-│                                    │    LLM generation)  │  │
-│                                    └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          KBot System                            │
+│                                                                 │
+│  ┌──────────────────┐   SSE stream    ┌─────────────────────┐  │
+│  │  Next.js UI      │ ──────────────▶ │   Flask Backend     │  │
+│  │  (Vercel)        │ ◀────────────── │   (Railway)         │  │
+│  └──────────────────┘  token-by-token └──────────┬──────────┘  │
+│                                                  │             │
+│                                       ┌──────────▼──────────┐  │
+│                                       │  Numpy Retrieval    │  │
+│                                       │  vectors.npy        │  │
+│                                       │  texts.json         │  │
+│                                       └──────────┬──────────┘  │
+│                                                  │             │
+│                                       ┌──────────▼──────────┐  │
+│                                       │   OpenAI API        │  │
+│                                       │  text-embedding-    │  │
+│                                       │  3-large + gpt-4o-  │  │
+│                                       │  mini (streaming)   │  │
+│                                       └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 **Request flow:**
-1. User submits a query via the Next.js frontend
-2. Frontend sends a `POST /response` request to the Flask backend
-3. Flask loads the persisted LlamaIndex from `KBot Storage/`
-4. LlamaIndex embeds the query and retrieves the most relevant context chunks
-5. OpenAI generates a grounded response using the retrieved context
-6. Response is returned as JSON and displayed in the UI
+1. User submits a query in the Next.js chat UI
+2. Frontend POSTs to `/api/response` (Next.js API route), forwarded to Railway
+3. Flask embeds the query using `text-embedding-3-large`
+4. Cosine similarity search over `vectors.npy` retrieves top-10 relevant chunks
+5. Retrieved context + conversation history is sent to `gpt-4o-mini` with streaming
+6. Tokens stream back as Server-Sent Events (SSE) and appear in the UI in real time
 
 ---
 
@@ -53,12 +52,16 @@ The RAG pipeline is powered by **LlamaIndex** for document indexing and semantic
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python, Flask, Flask-CORS |
-| AI / RAG | LlamaIndex (`llama-index`), OpenAI API |
-| Embeddings & LLM | OpenAI (`text-embedding-ada-002`, GPT models) |
-| Frontend | Next.js, React, TypeScript, Tailwind CSS |
-| Environment | python-dotenv |
+| Backend | Python 3.12, Flask, Flask-CORS, Flask-Limiter |
+| Vector Retrieval | NumPy (float16 vectors, cosine similarity) |
+| Embeddings | OpenAI `text-embedding-3-large` |
+| LLM | OpenAI `gpt-4o-mini` (streaming) |
+| Index Building | pypdf, docx2txt |
+| Frontend | Next.js 16 (App Router), React, TypeScript, Tailwind CSS |
+| UI Components | Radix UI, shadcn/ui, Framer Motion, ReactMarkdown |
 | Production server | Gunicorn |
+| Backend hosting | Railway |
+| Frontend hosting | Vercel |
 
 ---
 
@@ -66,23 +69,32 @@ The RAG pipeline is powered by **LlamaIndex** for document indexing and semantic
 
 ```
 KBot/
-├── app.py                  # Flask backend — RAG query endpoint
-├── requirements.txt        # Python dependencies
-├── .env                    # Environment variables (not committed)
-├── KBot Storage/           # Persisted LlamaIndex vector store
+├── backend/
+│   ├── app.py                  # Flask backend — RAG query endpoint (SSE streaming)
+│   ├── build_index.py          # Builds vectors.npy + texts.json from source documents
+│   ├── start.sh                # Railway startup script — downloads index, runs gunicorn
+│   ├── requirements.txt        # Python dependencies
+│   ├── .env                    # OPENAI_API_KEY (not committed)
+│   ├── data/                   # Source PDFs and DOCX files for indexing
+│   └── KBot Storage/           # Generated index files (vectors.npy + texts.json)
 │
-├── public/                 # Static assets (logos, images)
-├── styles/
-│   └── globals.css
-│
-├── node_modules/           # Frontend dependencies
-├── package.json            # Frontend configuration
-└── ...                     # Next.js app files
+└── portal/
+    ├── app/
+    │   ├── page.tsx             # Welcome / landing page
+    │   ├── chat/page.tsx        # Chat interface
+    │   └── api/response/route.ts  # Next.js API route — proxies to Railway backend
+    ├── components/
+    │   ├── chat-screen.tsx      # Main chat UI with SSE streaming
+    │   ├── top-bar.tsx          # Navigation bar
+    │   └── loading-dots.tsx     # Typing indicator
+    ├── public/                  # Static assets (logos, bot image)
+    ├── next.config.ts           # CSP headers for iframe embedding
+    └── package.json
 ```
 
 ---
 
-## Getting Started
+## Local Development
 
 ### Prerequisites
 
@@ -90,39 +102,169 @@ KBot/
 - Node.js 18+
 - An OpenAI API key
 
----
-
-### Backend Setup
+### Backend
 
 ```bash
-# Clone the repository
-cd KBot
+cd KBot/backend
 
-# Install Python dependencies
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Create a .env file and add your OpenAI key
-echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
+# Add your OpenAI key
+echo "OPENAI_API_KEY=your_key_here" > .env
 
-# Run the Flask server
+# Run the Flask dev server
 python app.py
 ```
 
-The backend will start at `http://localhost:5000`.
+Backend runs at `http://localhost:5000`.
 
----
-
-### Frontend Setup
+### Frontend
 
 ```bash
-# Install Node dependencies
+cd KBot/portal
+
+# Install dependencies
 npm install
 
-# Run the Next.js development server
+# Point the frontend to the local backend
+echo "BACKEND_URL=http://localhost:5000" > .env.local
+
+# Start the dev server
 npm run dev
 ```
 
-The frontend will start at `http://localhost:3000`.
+Frontend runs at `http://localhost:3000`.
+
+---
+
+## Building the Vector Index
+
+The index must be rebuilt any time source documents change.
+
+```bash
+cd KBot/backend
+source venv/bin/activate
+
+# Place PDFs and DOCX files in backend/data/
+# Then run:
+python build_index.py
+```
+
+This produces:
+- `KBot Storage/vectors.npy` — float16 normalized embeddings (~1.2 MB)
+- `KBot Storage/texts.json` — the corresponding text chunks (~10 MB)
+
+To deploy the new index, compress it and upload to GitHub Releases:
+
+```bash
+cd backend
+tar -czf kbot_storage.tar.gz "KBot Storage/"
+```
+
+Upload `kbot_storage.tar.gz` to your GitHub Release. Update the download URL in `start.sh` if the release tag changed.
+
+---
+
+## Deploying the Backend to Railway
+
+### First-time setup
+
+1. **Install the Railway CLI**
+   ```bash
+   npm install -g @railway/cli
+   ```
+
+2. **Login**
+   ```bash
+   railway login
+   ```
+
+3. **Link or create a project**
+   ```bash
+   cd KBot/backend
+   railway init          # Creates a new Railway project
+   # OR
+   railway link          # Links to an existing project
+   ```
+
+4. **Set the OpenAI API key as an environment variable**
+
+   In the Railway dashboard → your project → Variables, add:
+   ```
+   OPENAI_API_KEY=sk-...
+   ```
+
+5. **Deploy**
+   ```bash
+   railway up
+   ```
+
+   Railway will detect `start.sh` (set as the start command) and run it. `start.sh` downloads the index from GitHub Releases and then starts gunicorn.
+
+### Re-deploying after changes
+
+```bash
+cd KBot/backend
+railway up
+```
+
+Or push to your connected GitHub branch — Railway auto-deploys on push if the repo is connected in the Railway dashboard.
+
+### Getting your Railway backend URL
+
+In the Railway dashboard, go to your service → Settings → Networking → Generate a public domain. The URL will look like `https://your-project.up.railway.app`. You'll need this for the Vercel setup.
+
+---
+
+## Deploying the Frontend to Vercel
+
+### First-time setup
+
+1. **Install the Vercel CLI**
+   ```bash
+   npm install -g vercel
+   ```
+
+2. **Login**
+   ```bash
+   vercel login
+   ```
+
+3. **Deploy**
+   ```bash
+   cd KBot/portal
+   vercel --prod
+   ```
+
+   Follow the prompts to link or create a Vercel project.
+
+4. **Set the backend URL as an environment variable**
+
+   In the Vercel dashboard → your project → Settings → Environment Variables, add:
+   ```
+   BACKEND_URL=https://your-project.up.railway.app
+   ```
+
+   Then redeploy:
+   ```bash
+   vercel --prod
+   ```
+
+### Re-deploying after changes
+
+```bash
+cd KBot/portal
+vercel --prod
+```
+
+### Embedding the chat in a website (WordPress snippet)
+
+The chat page at `https://your-vercel-app.vercel.app/chat` is embeddable as an iframe. It includes a `frame-ancestors` CSP header allowing embedding from `kinnaird.edu.pk`. Use the widget HTML snippet to add a floating chat button to any webpage.
 
 ---
 
@@ -130,72 +272,57 @@ The frontend will start at `http://localhost:3000`.
 
 ### `POST /response`
 
-Send a query to the chatbot and receive a RAG-grounded response.
+Streams a RAG-grounded response as Server-Sent Events.
 
 **Request body:**
 ```json
 {
-  "query": "Your question here"
+  "query": "What is the fee for Computer Science?",
+  "history": [
+    { "role": "user", "content": "..." },
+    { "role": "assistant", "content": "..." }
+  ]
 }
 ```
 
-**Response:**
-```json
-{
-  "response": "KBot's answer based on retrieved context"
-}
+**SSE stream output:**
+```
+data: {"token": "The"}
+data: {"token": " fee"}
+data: {"token": " for"}
+...
+data: [DONE]
 ```
 
-**Error (missing query):**
-```json
-{
-  "error": "Query is required"
-}
-```
+**Rate limit:** 10 requests/minute per IP.  
+**Max query length:** 1000 characters.
 
 ---
 
-## How the RAG Pipeline Works
+## Environment Variables
 
-KBot uses LlamaIndex's `StorageContext` to load a pre-built vector index from the `KBot Storage/` directory at query time. This avoids rebuilding the index on each request and keeps the API stateless and fast.
-
-```python
-# From app.py — the core RAG query logic
-storage_context = StorageContext.from_defaults(persist_dir="KBot Storage")
-index = load_index_from_storage(storage_context)
-query_engine = index.as_query_engine()
-response = query_engine.query(query)
-```
-
-When a query arrives, LlamaIndex embeds it using OpenAI's embedding model, performs a semantic similarity search over the stored document vectors, retrieves the most relevant chunks, and passes them as context to the OpenAI LLM for grounded response generation.
+| Variable | Where | Description |
+|----------|-------|-------------|
+| `OPENAI_API_KEY` | Railway (backend) | Your OpenAI secret key |
+| `BACKEND_URL` | Vercel (frontend) | Full URL of the Railway backend, e.g. `https://xyz.up.railway.app` |
 
 ---
 
-## Research Relevance
+## Knowledge Base
 
-Building KBot surfaced several open problems directly relevant to AI safety research:
+The bot's knowledge comes from two sources:
 
-- **Hallucination vs. grounding**: Without retrieved context, LLM responses were plausible but factually unreliable. With RAG, accuracy improved significantly but the 20% failure cases were the most instructive — they tended to involve partially relevant context that misled the model rather than absent context.
-- **Evaluation difficulty**: Measuring 80% accuracy required building informal ground-truth benchmarks. Scaling this to larger or more ambiguous knowledge bases is a core unsolved problem in scalable oversight.
-- **Prompt sensitivity**: Small changes to system prompts measurably changed retrieval quality and response faithfulness.
-- **Context window trade-offs**: Adjusting chunk size and the number of retrieved chunks produced non-obvious effects on both accuracy and latency.
+1. **Vector index** — PDFs and DOCX files in `backend/data/` indexed by `build_index.py`. Contains the Kinnaird Admission Handbook and other college documents. Top-10 chunks are retrieved per query.
 
-These observations motivate my interest in empirical AI safety research, particularly around scalable oversight, LLM evaluation methodology, and hallucination detection.
+2. **System prompt** — Key facts injected directly for reliability: full fee table for all 30 programs, admission dates, intermediate closing merit (2025), intermediate stream subjects, and program-specific eligibility requirements.
 
 ---
 
-## Dependencies
+## Author
 
-**Python (`requirements.txt`):**
-```
-flask
-flask-cors
-python-dotenv
-gunicorn
-llama-index
-openai
-pydantic
-```
+**Shifa Kashif**  
+BSCS '24, Kinnaird College for Women University  
+**Linkedin**  
+www.linkedin.com/in/shifa-kashif
 
-**Frontend:** Next.js, React, TypeScript, Tailwind CSS, Recharts, Radix UI, and standard shadcn/ui component library.
 
