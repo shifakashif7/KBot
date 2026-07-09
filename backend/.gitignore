@@ -11,3 +11,6 @@ input.txt
 KBot Storage/
 kbot_storage.tar.gz
 kBot.ipynb
+scraped_data.json
+scraped_data_filtered.json
+scraped_data_full.json
