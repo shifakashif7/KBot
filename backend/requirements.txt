@@ -5,3 +5,7 @@ python-dotenv
 gunicorn
 openai
 numpy
+pypdf
+docx2txt
+beautifulsoup4
+requests

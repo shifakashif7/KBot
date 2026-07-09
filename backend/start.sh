@@ -1,8 +1,8 @@
 #!/bin/bash
 STORAGE_DIR="/app/KBot Storage"
-DOCSTORE="$STORAGE_DIR/docstore.json"
+VECTORS="$STORAGE_DIR/vectors.npy"
 
-if [ ! -f "$DOCSTORE" ] || [ ! -s "$DOCSTORE" ]; then
+if [ ! -f "$VECTORS" ] || [ ! -s "$VECTORS" ]; then
     echo "Downloading pre-built index..."
     rm -rf "$STORAGE_DIR"
     python -c "

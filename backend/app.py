@@ -18,15 +18,26 @@ STORAGE_DIR = os.path.join(BASE_DIR, "KBot Storage")
 
 print("Loading index...")
 vectors = np.load(os.path.join(STORAGE_DIR, "vectors.npy"))
-with open(os.path.join(STORAGE_DIR, "texts.json")) as f:
-    texts = json.load(f)
-print(f"Loaded {len(texts)} nodes.")
+with open(os.path.join(STORAGE_DIR, "texts.json"), encoding="utf-8") as f:
+    raw = json.load(f)
+
+# Support both old format (list of strings) and new format (list of dicts with url/title)
+def _normalise(entry):
+    if isinstance(entry, str):
+        return {"text": entry, "url": "", "title": ""}
+    return entry
+
+texts = [_normalise(e) for e in raw]
+print(f"Loaded {len(texts)} chunks.")
 
 openai_client = OpenAIClient()
 
 SYSTEM_PROMPT = (
     "You are KBot, a friendly and knowledgeable AI assistant for Kinnaird College for Women University, Lahore, Pakistan. "
     "You help prospective students, current students, and parents with questions about Kinnaird College.\n\n"
+    "When the retrieved context includes a source URL, include it as a clickable markdown link at the end of your answer "
+    "so the user can verify or read more. Format as: [Read more on the Kinnaird website](URL). "
+    "Only include links that actually appear in the context — never make up URLs.\n\n"
     "Always answer in natural, warm, human language. NEVER use phrases like 'this is not in my context', "
     "'based on the provided context', 'I don't have that information in my context', or any similar robotic phrasing. "
     "Just answer like a helpful, knowledgeable person would. If something genuinely isn't available, say it naturally — "
@@ -55,16 +66,34 @@ SYSTEM_PROMPT = (
     "A merit list is announced after aptitude tests and interviews. There is no publicly known closing percentage for undergraduate programs.\n\n"
 
     "== POSTGRADUATE (MPhil/MS/PhD) ADMISSION PROCESS ==\n"
-    "Postgraduate admissions are also NOT purely marks-based. Selection is based on:\n"
-    "  1. Bachelor's degree result — minimum CGPA 2.50 or 60% marks (as per program eligibility)\n"
-    "  2. KC Graduate Assessment Test (written test, held July 16, 2026)\n"
+    "Postgraduate admissions are NOT purely marks-based. Selection is based on:\n"
+    "  1. Bachelor's degree — minimum CGPA 2.50 or 60% marks (as per program)\n"
+    "  2. KC Graduate Assessment Test (written test)\n"
     "  3. Interview (shortlisted candidates only)\n"
     "There is no publicly known closing percentage for postgraduate programs.\n\n"
 
-    "CRITICAL RULE — Merit queries: If anyone asks about 'closing merit', 'merit for [any program]', 'what marks do I need for [BS/MPhil/MS/PhD program]', or similar — "
-    "do NOT give a percentage. Instead explain that admission is based on the aptitude test/assessment test + interview (not marks alone), "
-    "then offer to share the eligibility criteria for the specific program. "
-    "The only closing merit percentages that exist are for Kinnaird's own INTERMEDIATE program (FSc/FA-level classes), not for degree programs.\n\n"
+    "POSTGRADUATE PROGRAMS OFFERED (MPhil/MS):\n"
+    "M.Phil Accounting & Finance, M.Phil Applied Linguistics, M.Phil Biochemistry, M.Phil Biotechnology, "
+    "M.Phil Business Administration, M.Phil Chemistry, MS Clinical Psychology, MS Computer Science, "
+    "M.Phil Education, M.Phil English Literature, M.Phil Environmental Sciences, "
+    "M.Phil Food Science & Human Nutrition, M.Phil International Relations, M.Phil Media Studies, "
+    "M.Phil Molecular Biology & Genetics, M.Phil Political Science, M.Phil Statistics, M.Phil Urdu.\n"
+    "PhD programs: PhD Biotechnology, PhD Food Science & Human Nutrition, PhD English Literature.\n\n"
+
+    "POSTGRADUATE SAME-SUBJECT RULE: For ALL MPhil/MS programs, the applicant must have done their bachelor's/master's "
+    "in the SAME subject as the program they are applying to — EXCEPT for M.Phil International Relations and M.Phil Political Science "
+    "(which accept related social science backgrounds).\n"
+    "Examples: M.Phil English Literature requires a BS/BA in English Literature. "
+    "M.Phil Business Administration requires a business-related bachelor's degree (BBA/BCom/BS Business Administration). "
+    "A BA English does NOT qualify for M.Phil Business Administration.\n\n"
+
+    "CRITICAL RULE — Merit queries: If anyone asks about 'closing merit', 'what marks do I need for [any BS/MPhil/MS/PhD program]', or similar — "
+    "do NOT give a percentage. Explain that admission is based on aptitude test/assessment test + interview, not marks alone, "
+    "then offer to share the eligibility criteria for that specific program. "
+    "Merit percentages only exist for Kinnaird's INTERMEDIATE (FSc/FA-level) admissions — not for any degree program.\n\n"
+
+    "CRITICAL RULE — Unknown programs: If a student asks about a program Kinnaird does not offer (e.g. MBBS, Engineering), "
+    "say clearly that Kinnaird does not offer that program and list what related programs are available if any.\n\n"
 
     "== FALL 2026 ADMISSION DATES (UNDERGRADUATE) ==\n"
     "Applications open: June 29, 2026 | Last date to apply: July 10, 2026\n"
@@ -208,7 +237,7 @@ def retrieve(query, top_k=10):
     qv = qv / (np.linalg.norm(qv) + 1e-10)
     scores = vectors @ qv
     top_indices = np.argsort(scores)[::-1][:top_k]
-    return [texts[i] for i in top_indices]
+    return [texts[i] for i in top_indices]  # list of {"text", "url", "title"}
 
 
 @app.route('/')
@@ -228,7 +257,19 @@ def get_response():
         return jsonify({"error": f"Query too long. Max {MAX_QUERY_LENGTH} characters."}), 400
 
     context_chunks = retrieve(query)
-    context = "\n\n".join(context_chunks)
+
+    # Build context string — include source URL where available
+    context_parts = []
+    for chunk in context_chunks:
+        text = chunk["text"]
+        url = chunk.get("url", "")
+        title = chunk.get("title", "")
+        if url:
+            header = f"[Source: {title} — {url}]" if title else f"[Source: {url}]"
+            context_parts.append(f"{header}\n{text}")
+        else:
+            context_parts.append(text)
+    context = "\n\n".join(context_parts)
 
     messages = [{"role": "system", "content": f"{SYSTEM_PROMPT}\n\nContext from Kinnaird College documents:\n{context}"}]
     for msg in history[-10:]:
